@@ -6,3 +6,4 @@ library;
 
 export 'src/mqtt_suppression.dart';
 export 'src/otel_mqtt.dart';
+export 'src/traced_mqtt_client.dart';

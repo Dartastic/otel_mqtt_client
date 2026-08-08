@@ -2,8 +2,11 @@
 // Copyright 2025, Mindful Software LLC, All rights reserved.
 
 import 'package:dartastic_opentelemetry/dartastic_opentelemetry.dart';
+import 'package:mqtt_client/mqtt_client.dart';
+import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:otel_mqtt_client/otel_mqtt_client.dart';
 import 'package:test/test.dart';
+import 'package:typed_data/typed_data.dart' as typed;
 
 class _MemorySpanExporter implements SpanExporter {
   final List<Span> spans = [];
@@ -56,8 +59,12 @@ void main() {
       expect(span.kind, equals(SpanKind.client));
       expect(span.name, equals('mqtt connect'));
       final attrs = _attrs(span);
-      expect(attrs['messaging.system'], equals('mqtt'));
-      expect(attrs['messaging.operation'], equals('connect'));
+      expect(attrs[Messaging.messagingSystem.key], equals('mqtt'));
+      expect(attrs[Messaging.messagingOperationName.key], equals('connect'));
+      // Registry key sanity: the wire keys are the current
+      // (non-deprecated) semconv names.
+      expect(attrs.containsKey('messaging.operation'), isFalse);
+      expect(attrs.containsKey('messaging.operation.name'), isTrue);
     });
 
     test('tracedMqttCall (sync) records destination.name', () {
@@ -69,8 +76,11 @@ void main() {
       final span = exporter.spans.single;
       expect(span.name, equals('mqtt publish sensors/temp'));
       final attrs = _attrs(span);
-      expect(attrs['messaging.operation'], equals('publish'));
-      expect(attrs['messaging.destination.name'], equals('sensors/temp'));
+      expect(attrs[Messaging.messagingOperationName.key], equals('publish'));
+      expect(
+        attrs[Messaging.messagingDestinationName.key],
+        equals('sensors/temp'),
+      );
     });
 
     test('exception flips span to Error', () {
@@ -93,6 +103,61 @@ void main() {
         );
       });
       expect(exporter.spans, isEmpty);
+    });
+
+    test(
+        'tracedPublishMessage on an unconnected client emits an Error '
+        'span with send operation type', () {
+      final client = MqttServerClient('localhost', 'otel-mqtt-test');
+      final payload = typed.Uint8Buffer()..addAll([1, 2, 3]);
+      expect(
+        () => client.tracedPublishMessage(
+          'sensors/temp',
+          MqttQos.atMostOnce,
+          payload,
+        ),
+        throwsA(isA<ConnectionException>()),
+      );
+      final span = exporter.spans.single;
+      expect(span.kind, equals(SpanKind.client));
+      expect(span.name, equals('mqtt publish sensors/temp'));
+      expect(span.status, equals(SpanStatusCode.Error));
+      final attrs = _attrs(span);
+      expect(attrs[Messaging.messagingSystem.key], equals('mqtt'));
+      expect(attrs[Messaging.messagingOperationName.key], equals('publish'));
+      expect(
+        attrs[Messaging.messagingOperationType.key],
+        equals(MessagingOperationType.send.value),
+      );
+      expect(
+        attrs[Messaging.messagingDestinationName.key],
+        equals('sensors/temp'),
+      );
+      expect(
+        attrs[ErrorAttributes.errorType.key],
+        equals('ConnectionException'),
+      );
+    });
+
+    test('tracedConnect delegates through the async helper', () async {
+      // No broker: connect() fails fast on an unresolvable host lookup
+      // or refused connection — either way the span must flip to
+      // Error and still carry the messaging attrs. No network is
+      // required for the assertion.
+      final client = MqttServerClient('localhost', 'otel-mqtt-test')
+        ..port = 1; // nothing listens on port 1
+      try {
+        await client.tracedConnect();
+      } on Exception {
+        // expected: no broker
+      }
+      client.disconnect();
+      expect(exporter.spans, isNotEmpty);
+      final span = exporter.spans.first;
+      expect(span.name, equals('mqtt connect'));
+      final attrs = _attrs(span);
+      expect(attrs[Messaging.messagingSystem.key], equals('mqtt'));
+      expect(attrs[Messaging.messagingOperationName.key], equals('connect'));
     });
   });
 }
