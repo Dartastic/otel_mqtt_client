@@ -2,7 +2,7 @@ name: otel_mqtt_client
 description: OpenTelemetry instrumentation for `package:mqtt_client`.
   Helpers around MqttClient.connect / publishMessage / subscribe with
   messaging.* semconv spans.
-version: 0.2.0
+version: 0.3.0-wip
 repository: https://github.com/dartastic/otel_mqtt_client
 homepage: https://dartastic.io
 
