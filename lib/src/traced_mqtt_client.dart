@@ -1,7 +1,7 @@
 // Licensed under the Apache License, Version 2.0
 // Copyright 2025, Mindful Software LLC, All rights reserved.
 
-import 'package:dartastic_opentelemetry/dartastic_opentelemetry.dart';
+import 'package:dartastic_opentelemetry_api/dartastic_opentelemetry_api.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:typed_data/typed_data.dart' as typed;
 
